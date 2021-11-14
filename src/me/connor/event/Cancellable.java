@@ -5,23 +5,30 @@ import java.util.function.*;
 
 import me.connor.util.*;
 
-public interface Cancellable {
+public interface Cancellable<T> {
 
+	T value();
+	
 	boolean isCancelled();
 	
 	void setCancelled(boolean cancel);
 	
-	public static Cancellable simple() {
-		return new Simple();
+	public static <T> Cancellable<T> simple(@Nonnull T value) {
+		return new Simple<>(value);
 	}
 	
-	public static Cancellable atomic() {
-		return new Atomic();
+	public static <T> Cancellable<T> atomic(@Nonnull T value) {
+		return new Atomic<>(value);
 	}
 	
-	public static Cancellable proxy(@Nonnull BooleanSupplier supplier, @Nonnull Consumer<Boolean> updater) {
-		Assert.allNotNull(supplier, updater);
-		return new Cancellable() {
+	public static <T> Cancellable<T> proxy(@Nonnull T value, @Nonnull BooleanSupplier supplier, @Nonnull Consumer<Boolean> updater) {
+		Assert.allNotNull(value, supplier, updater);
+		return new Cancellable<>() {
+			
+			@Override
+			public T value() {
+				return value;
+			}
 			
 			@Override
 			public boolean isCancelled() {
@@ -36,12 +43,25 @@ public interface Cancellable {
 		};
 	}
 	
-	static final class Simple implements Cancellable {
+	public static <T> Cancellable<T> proxy(@Nonnull T value, @Nonnull Function<T, Boolean> supplier, @Nonnull Consumer<Boolean> updater) {
+		return proxy(value, () -> supplier.apply(value), updater);
+	}
+	
+	static final class Simple<T> implements Cancellable<T> {
+		
+		private final T value;
 		
 		private boolean cancelled;
 		
-		private Simple() {
+		private Simple(@Nonnull T value) {
+			Assert.notNull(value);
+			this.value = value;
 			cancelled = false;
+		}
+		
+		@Override
+		public T value() {
+			return value;
 		}
 		
 		@Override
@@ -56,12 +76,21 @@ public interface Cancellable {
 		
 	}
 	
-	static final class Atomic implements Cancellable {
+	static final class Atomic<T> implements Cancellable<T> {
+		
+		private final T value;
 		
 		private final AtomicBoolean cancelled;
 		
-		private Atomic() {
+		private Atomic(@Nonnull T value) {
+			Assert.notNull(value);
+			this.value = value;
 			cancelled = new AtomicBoolean(false);
+		}
+		
+		@Override
+		public T value() {
+			return value;
 		}
 		
 		@Override
