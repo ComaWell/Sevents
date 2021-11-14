@@ -164,7 +164,7 @@ public class EventChannel {
 	
 	@Override
 	public boolean equals(Object obj) {
-		return obj == this || obj instanceof EventChannel c && c.id == id;
+		return obj == this || obj instanceof EventChannel && ((EventChannel) obj).id == id;
 	}
 	
 	private static final Set<EventChannel> CHANNELS = Collections.newSetFromMap(new WeakHashMap<>());
