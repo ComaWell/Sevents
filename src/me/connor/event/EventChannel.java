@@ -53,6 +53,14 @@ public class EventChannel {
 		return type;
 	}
 	
+	public boolean isActive() {
+		return isActive(this);
+	}
+	
+	private void checkActive() {
+		checkActive(this);
+	}
+	
 	private boolean isBaked() {
 		return baked != null;
 	}
@@ -130,18 +138,21 @@ public class EventChannel {
 	
 	public <T> void addListener(@Nonnull Event<T> event, @Nonnull Consumer<? super T> listener) {
 		Assert.allNotNull(event, listener);
+		checkActive();
 		getListeners(event).add((Consumer<T>) listener);
 		invalidateBaked();
 	}
 	
 	public void addListener(@Nonnull Event<Void> event, Runnable listener) {
 		Assert.allNotNull(event, listener);
+		checkActive();
 		getListeners(event).add((v) -> listener.run());
 		invalidateBaked();
 	}
 	
 	private <T> void accept(@Nonnull Event<T> event, @Nullable T value) {
 		Assert.notNull(event);
+		checkActive();
 		if (!event.isBlank()) Assert.notNull(value);
 		Consumer<T>[] listeners = getBaked(event);
 		if (listeners != null && listeners.length != 0) {
@@ -171,6 +182,15 @@ public class EventChannel {
 	
 	private static boolean hasChannel(int id) {
 		return CHANNELS.stream().anyMatch((c) -> c.id == id);
+	}
+	
+	private static boolean isActive(@Nonnull EventChannel channel) {
+		Assert.notNull(channel);
+		return CHANNELS.stream().anyMatch((c) -> c == channel);
+	}
+	
+	private static void checkActive(@Nonnull EventChannel channel) {
+		if (!isActive(channel)) throw new IllegalStateException("This EventChannel is no longer active");
 	}
 	
 	synchronized
