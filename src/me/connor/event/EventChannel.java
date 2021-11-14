@@ -103,7 +103,7 @@ public class EventChannel {
 	
 	private <T, A> List<Consumer<T>> convertListeners(@Nonnull List<Consumer<A>> listeners, @Nonnull Event<A> from, @Nonnull Event<T> to) {
 		Assert.allNotNull(listeners, from, to);
-		return listeners.stream().map((l) -> convertListener(l, from, to)).toList();
+		return listeners.stream().map((l) -> convertListener(l, from, to)).collect(Collectors.toUnmodifiableList());
 	}
 	
 	@SuppressWarnings("rawtypes")
