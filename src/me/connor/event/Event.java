@@ -116,7 +116,7 @@ public abstract class Event<T> {
 		}
 		
 		public T dispatch(@Nonnull T value) {
-			return EventChannel.dispatch(null, value);
+			return EventChannel.dispatch(this, value);
 		}
 		
 	}
