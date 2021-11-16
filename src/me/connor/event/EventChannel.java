@@ -25,9 +25,9 @@ public class EventChannel {
 		
 		private <T> Stream<T> applyType(@Nonnull Stream<T> stream) {
 			Assert.notNull(stream);
-			stream.parallel();
 			return (Stream<T>) converter.apply(stream);
 		}
+		
 	}
 	
 	private final int id;
