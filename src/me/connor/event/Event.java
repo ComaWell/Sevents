@@ -6,6 +6,7 @@ import me.connor.util.*;
 
 public abstract class Event<T> {
 	
+	//The only event with a blank parent. Every single other Event is a descendant of the root
 	public static final Blank ROOT = new Blank("Event", null);
 	
 	private final String name;
@@ -13,7 +14,7 @@ public abstract class Event<T> {
 	private Event(@Nonnull String name) {
 		Assert.notNull(name);
 		if (name.isBlank() || name.lines().count() != 1)
-			throw new IllegalArgumentException("An Event name must be non-blank, single-line String");
+			throw new IllegalArgumentException("An Event name must be a non-blank, single-line String");
 		this.name = name;
 	}
 	
@@ -21,16 +22,23 @@ public abstract class Event<T> {
 		return name;
 	}
 	
+	@Override
+	public String toString() {
+		return name();
+	}
+	
 	public abstract boolean isBlank();
 	
 	public abstract Event<?> parent();
 	
-	public Blank castBlank() {
+	//I don't think there's a need to make these public. Events should be declared, stored, and referenced statically
+	//as their valued or blank Class, so there shouldn't really be a situation where casting is needed publicly
+	Blank castBlank() {
 		if (!isBlank()) throw new UnsupportedOperationException("This Event is valued");
 		return (Blank) this;
 	}
 	
-	public Valued<T> castValued() {
+	Valued<T> castValued() {
 		if (isBlank()) throw new UnsupportedOperationException("This Event is blank");
 		return (Valued<T>) this;
 	}
@@ -58,7 +66,7 @@ public abstract class Event<T> {
 		}
 		
 		public boolean isRoot() {
-			return parent != null;
+			return parent == null;
 		}
 		
 		@Override
