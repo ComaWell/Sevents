@@ -43,7 +43,7 @@ public interface Cancellable<T> {
 		};
 	}
 	
-	public static <T> Cancellable<T> proxy(@Nonnull T value, @Nonnull Function<T, Boolean> supplier, @Nonnull Consumer<Boolean> updater) {
+	public static <T> Cancellable<T> proxy(@Nonnull T value, @Nonnull Function<? super T, Boolean> supplier, @Nonnull Consumer<Boolean> updater) {
 		return proxy(value, () -> supplier.apply(value), updater);
 	}
 	
