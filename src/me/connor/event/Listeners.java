@@ -7,45 +7,45 @@ import me.connor.util.*;
 
 public class Listeners {
 
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> handleCancelled(@Nonnull Consumer<? super T> ifCancelled) {
-		Assert.notNull(ifCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> handleCanceled(@Nonnull Consumer<? super T> ifCanceled) {
+		Assert.notNull(ifCanceled);
 		return (e, v) -> {
-			if (v.isCancelled()) ifCancelled.accept(v.value());
+			if (v.isCanceled()) ifCanceled.accept(v.value());
 		};
 	}
 	
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> observeCancelled(@Nonnull Runnable ifCancelled) {
-		Assert.notNull(ifCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> observeCanceled(@Nonnull Runnable ifCanceled) {
+		Assert.notNull(ifCanceled);
 		return (e, v) -> {
-			if (v.isCancelled()) ifCancelled.run();
+			if (v.isCanceled()) ifCanceled.run();
 		};
 	}
 	
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> handleNotCancelled(@Nonnull Consumer<? super T> ifNotCancelled) {
-		Assert.notNull(ifNotCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> handleNotCanceled(@Nonnull Consumer<? super T> ifNotCanceled) {
+		Assert.notNull(ifNotCanceled);
 		return (e, v) -> {
-			if (!v.isCancelled()) ifNotCancelled.accept(v.value());
+			if (!v.isCanceled()) ifNotCanceled.accept(v.value());
 		};
 	}
 	
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> observeNotCancelled(@Nonnull Runnable ifNotCancelled) {
-		Assert.notNull(ifNotCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> observeNotCanceled(@Nonnull Runnable ifNotCanceled) {
+		Assert.notNull(ifNotCanceled);
 		return (e, v) -> {
-			if (!v.isCancelled()) ifNotCancelled.run();
+			if (!v.isCanceled()) ifNotCanceled.run();
 		};
 	}
 	
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> handleCancellable(@Nonnull Consumer<T> ifCancelled, @Nonnull Consumer<T> ifNotCancelled) {
-		Assert.allNotNull(ifCancelled, ifNotCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> handleCancelable(@Nonnull Consumer<T> ifCanceled, @Nonnull Consumer<T> ifNotCanceled) {
+		Assert.allNotNull(ifCanceled, ifNotCanceled);
 		return (e, v) -> {
-			(v.isCancelled() ? ifCancelled : ifNotCancelled).accept(v.value());
+			(v.isCanceled() ? ifCanceled : ifNotCanceled).accept(v.value());
 		};
 	}
 	
-	public static <T> BiConsumer<Event<?>, Cancellable<T>> observeCancellable(@Nonnull Runnable ifCancelled, @Nonnull Runnable ifNotCancelled) {
-		Assert.allNotNull(ifCancelled, ifNotCancelled);
+	public static <T> BiConsumer<Event<?>, Cancelable<T>> observeCancelable(@Nonnull Runnable ifCanceled, @Nonnull Runnable ifNotCanceled) {
+		Assert.allNotNull(ifCanceled, ifNotCanceled);
 		return (e, v) -> {
-			(v.isCancelled() ? ifCancelled : ifNotCancelled).run();
+			(v.isCanceled() ? ifCanceled : ifNotCanceled).run();
 		};
 	}
 	
