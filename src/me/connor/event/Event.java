@@ -129,6 +129,4 @@ public abstract class Event<T> {
 		
 	}
 	
-	
-	
 }
