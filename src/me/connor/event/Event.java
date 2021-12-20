@@ -6,7 +6,7 @@ import me.connor.util.*;
 
 public abstract class Event<T> {
 	
-	//The only event with a blank parent. Every single other Event is a descendant of the root
+	//The only event with a null parent. Every single other Event is a descendant of the root
 	public static final Blank ROOT = new Blank("Event", null);
 	
 	private final String name;
