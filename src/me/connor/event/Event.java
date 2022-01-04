@@ -2,17 +2,16 @@ package me.connor.event;
 
 import java.util.function.*;
 
-import me.connor.util.*;
-
 public abstract class Event<T> {
 	
-	//The only event with a null parent. Every single other Event is a descendant of the root
+	//The only Event with a null parent. Every single other Event is a descendant of the root
 	public static final Blank ROOT = new Blank("Event", null);
 	
 	private final String name;
 	
-	private Event(@Nonnull String name) {
-		Assert.notNull(name);
+	private Event(String name) {
+		if (name == null)
+			throw new NullPointerException();
 		if (name.isBlank() || name.lines().count() != 1)
 			throw new IllegalArgumentException("An Event name must be a non-blank, single-line String");
 		this.name = name;
@@ -29,25 +28,19 @@ public abstract class Event<T> {
 	
 	public abstract boolean isBlank();
 	
+	public abstract boolean isProxy();
+	
 	public abstract Event<?> parent();
 	
-	//I don't think there's a need to make these public. Events should be declared, stored, and referenced statically
-	//as their valued or blank Class, so there shouldn't really be a situation where casting is needed publicly
-	Blank castBlank() {
-		if (!isBlank()) throw new UnsupportedOperationException("This Event is valued");
-		return (Blank) this;
+	public Proxy<T> proxy() {
+		return isProxy() ? (Proxy<T>) this : new Proxy<>(this);
 	}
 	
-	Valued<T> castValued() {
-		if (isBlank()) throw new UnsupportedOperationException("This Event is blank");
-		return (Valued<T>) this;
-	}
-	
-	public static Blank blank(@Nonnull String name) {
+	public static Blank blank(String name) {
 		return ROOT.child(name);
 	}
 	
-	public static <T> Valued<T> valued(@Nonnull String name) {
+	public static <T> Valued<T> valued(String name) {
 		return ROOT.valuedChild(name);
 	}
 	
@@ -55,7 +48,7 @@ public abstract class Event<T> {
 		
 		private final Blank parent;
 		
-		private Blank(@Nonnull String name, @Nullable Blank parent) {
+		private Blank(String name, Blank parent) {
 			super(name);
 			this.parent = parent;
 		}
@@ -63,6 +56,11 @@ public abstract class Event<T> {
 		@Override
 		public boolean isBlank() {
 			return true;
+		}
+		
+		@Override
+		public boolean isProxy() {
+			return false;
 		}
 		
 		public boolean isRoot() {
@@ -74,11 +72,11 @@ public abstract class Event<T> {
 			return isRoot() ? this : parent;
 		}
 		
-		public <T> Valued<T> valuedChild(@Nonnull String name) {
+		public <T> Valued<T> valuedChild(String name) {
 			return new Valued<>(name, this, (t) -> null);
 		}
 		
-		public Blank child(@Nonnull String name) {
+		public Blank child(String name) {
 			return new Blank(name, this);
 		}
 		
@@ -93,9 +91,10 @@ public abstract class Event<T> {
 		private final Event<?> parent;
 		private final Function<T, ?> parentConverter;
 		
-		private <P> Valued(@Nonnull String name, @Nonnull Event<P> parent, @Nonnull Function<T, P> parentConverter) {
+		private <P> Valued(String name, Event<P> parent, Function<T, P> parentConverter) {
 			super(name);
-			Assert.allNotNull(parent, parentConverter);
+			if (parent == null || parentConverter == null)
+				throw new NullPointerException();
 			this.parent = parent;
 			this.parentConverter = parentConverter;
 		}
@@ -106,25 +105,61 @@ public abstract class Event<T> {
 		}
 		
 		@Override
+		public boolean isProxy() {
+			return false;
+		}
+		
+		@Override
 		public Event<?> parent() {
 			return parent;
 		}
 		
-		Object convert(@Nonnull T input) {
-			Assert.notNull(input);
+		Object convert(T input) {
+			if (input == null)
+				throw new NullPointerException();
 			return parentConverter.apply(input);
 		}
 		
-		public <C> Valued<C> child(@Nonnull String name, @Nonnull Function<C, T> converter) {
+		public <C> Valued<C> child(String name, Function<C, T> converter) {
 			return new Valued<>(name, this, converter);
 		}
 		
-		public <C extends T> Valued<T> child(@Nonnull String name) {
+		public <C extends T> Valued<T> child(String name) {
 			return child(name, (t) -> t);
 		}
 		
-		public T dispatch(@Nonnull T value) {
+		public T dispatch(T value) {
 			return EventChannel.dispatch(this, value);
+		}
+		
+	}
+	
+	public static final class Proxy<T> extends Event<T> {
+		
+		private final Event<T> parent;
+		
+		private Proxy(Event<T> parent) {
+			super(parent.name());
+			this.parent = parent;
+		}
+		
+		@Override
+		public boolean isBlank() {
+			return parent.isBlank();
+		}
+		
+		@Override
+		public boolean isProxy() {
+			return true;
+		}
+
+		Event<T> proxied() {
+			return parent;
+		}
+
+		@Override
+		public Event<?> parent() {
+			return parent.parent();
 		}
 		
 	}

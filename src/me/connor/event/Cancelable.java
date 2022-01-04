@@ -3,8 +3,6 @@ package me.connor.event;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 
-import me.connor.util.*;
-
 public interface Cancelable<T> {
 
 	T value();
@@ -13,16 +11,17 @@ public interface Cancelable<T> {
 	
 	void setCanceled(boolean cancel);
 	
-	public static <T> Cancelable<T> simple(@Nonnull T value) {
+	public static <T> Cancelable<T> simple(T value) {
 		return new Simple<>(value);
 	}
 	
-	public static <T> Cancelable<T> atomic(@Nonnull T value) {
+	public static <T> Cancelable<T> atomic(T value) {
 		return new Atomic<>(value);
 	}
 	
-	public static <T> Cancelable<T> proxy(@Nonnull T value, @Nonnull BooleanSupplier supplier, @Nonnull Consumer<Boolean> updater) {
-		Assert.allNotNull(value, supplier, updater);
+	public static <T> Cancelable<T> proxy(T value, BooleanSupplier supplier, Consumer<Boolean> updater) {
+		if (value == null || supplier == null || updater == null)
+			throw new NullPointerException();
 		return new Cancelable<>() {
 			
 			@Override
@@ -43,7 +42,7 @@ public interface Cancelable<T> {
 		};
 	}
 	
-	public static <T> Cancelable<T> proxy(@Nonnull T value, @Nonnull Function<? super T, Boolean> supplier, @Nonnull Consumer<Boolean> updater) {
+	public static <T> Cancelable<T> proxy(T value, Function<? super T, Boolean> supplier, Consumer<Boolean> updater) {
 		return proxy(value, () -> supplier.apply(value), updater);
 	}
 	
@@ -53,8 +52,9 @@ public interface Cancelable<T> {
 		
 		private boolean canceled;
 		
-		private Simple(@Nonnull T value) {
-			Assert.notNull(value);
+		private Simple(T value) {
+			if (value == null)
+				throw new NullPointerException();
 			this.value = value;
 			canceled = false;
 		}
@@ -82,8 +82,9 @@ public interface Cancelable<T> {
 		
 		private final AtomicBoolean canceled;
 		
-		private Atomic(@Nonnull T value) {
-			Assert.notNull(value);
+		private Atomic(T value) {
+			if (value == null)
+				throw new NullPointerException();
 			this.value = value;
 			canceled = new AtomicBoolean(false);
 		}

@@ -5,8 +5,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.*;
 import java.util.stream.*;
 
-import me.connor.util.*;
-
 public class EventChannel {
 	
 	private final int id;
@@ -42,8 +40,9 @@ public class EventChannel {
 	}
 	
 	synchronized
-	private <T> BiConsumer<Event<?>, T>[] getBaked(@Nonnull Event<T> event) {
-		Assert.notNull(event);
+	private <T> BiConsumer<Event<?>, T>[] getBaked(Event<T> event) {
+		if (event == null)
+			throw new NullPointerException();
 		if (!isBaked()) bake();
 		return baked.get(event);
 	}
@@ -57,88 +56,99 @@ public class EventChannel {
 		this.baked = Map.copyOf(baked);
 	}
 	
-	private <T> BiConsumer<Event<?>, T>[] bake(@Nonnull Event<T> event) {
-		return (event.isBlank() ? bakeBlank(event.castBlank()) : bakeValued(event.castValued())).toArray(BiConsumer[]::new);
+	private <T> BiConsumer<Event<?>, T>[] bake(Event<T> event) {
+		return (event.isBlank() ? bakeBlank((Event.Blank) event) : bakeValued((Event.Valued<T>) event)).toArray(BiConsumer[]::new);
 	}
 	
-	private List<BiConsumer<Event<?>, Void>> bakeBlank(@Nonnull Event.Blank event) {
-		Assert.notNull(event);
+	private List<BiConsumer<Event<?>, Void>> bakeBlank(Event.Blank event) {
+		if (event == null)
+			throw new NullPointerException();
 		List<BiConsumer<Event<?>, Void>> listeners = new ArrayList<>(getListeners(event));
 		if (!event.isRoot()) listeners.addAll(bakeBlank(event.parent()));
 		return listeners;
 	}
 	
-	private <T> List<BiConsumer<Event<?>, T>> bakeValued(@Nonnull Event.Valued<T> event) {
-		Assert.notNull(event);
+	private <T> List<BiConsumer<Event<?>, T>> bakeValued(Event.Valued<T> event) {
+		if (event == null)
+			throw new NullPointerException();
 		List<BiConsumer<Event<?>, T>> listeners = new ArrayList<>(getListeners(event));
 		listeners.addAll(bakeForDescendant(event.parent(), event));
 		return listeners;
 	}
 	
-	private <T, P> List<BiConsumer<Event<?>, T>> bakeForDescendant(@Nonnull Event<P> event, @Nonnull Event.Valued<T> descendant) {
-		Assert.allNotNull(event, descendant);
-		if (event.isBlank()) return convertListeners(bakeBlank(event.castBlank()), event.castBlank(), descendant);
+	private <T, P> List<BiConsumer<Event<?>, T>> bakeForDescendant(Event<P> event, Event.Valued<T> descendant) {
+		if (event == null || descendant == null)
+			throw new NullPointerException();
+		if (event.isBlank()) return convertListeners(bakeBlank((Event.Blank) event), (Event.Blank) event, descendant);
 		List<BiConsumer<Event<?>, T>> listeners = new ArrayList<>(convertListeners(getListeners(event), event, descendant));
 		listeners.addAll(bakeForDescendant(event.parent(), descendant));
 		return listeners;
 	}
 	
-	private <T, P> List<BiConsumer<Event<?>, T>> convertListeners(@Nonnull List<BiConsumer<Event<?>, P>> listeners, @Nonnull Event<P> from, @Nonnull Event<T> to) {
-		Assert.allNotNull(listeners, from, to);
+	private <T, P> List<BiConsumer<Event<?>, T>> convertListeners(List<BiConsumer<Event<?>, P>> listeners, Event<P> from, Event<T> to) {
+		if (listeners == null || from == null || to == null)
+			throw new NullPointerException();
 		return listeners.stream().map((l) -> convertListener(l, from, to)).collect(Collectors.toList());
 	}
 	
 	//TODO: There's one million percent a better/cleaner/faster way to do this
 	@SuppressWarnings("rawtypes")
-	private <T, P> BiConsumer<Event<?>, T> convertListener(@Nonnull BiConsumer<Event<?>, P> listener, @Nonnull Event<P> from, @Nonnull Event<T> to) {
-		Assert.allNotNull(listener, from, to);
+	private <T, P> BiConsumer<Event<?>, T> convertListener(BiConsumer<Event<?>, P> listener, Event<P> from, Event<T> to) {
+		if (listeners == null || from == null || to == null)
+			throw new NullPointerException();
 		return (e, t) -> {
 			Object val = t;
 			Event current = from;
 			do {
 				if (current.isBlank()) break;
-				else val = current.castValued().convert(val);
+				else val = ((Event.Valued) current).convert(val);
 			} while((current = current.parent()) != to); 
 			listener.accept(e, (P) val);
 		};
 	}
 	
-	private <T> List<BiConsumer<Event<?>, T>> getListeners(@Nonnull Event<T> event) {
-		Assert.notNull(event);
+	private <T> List<BiConsumer<Event<?>, T>> getListeners(Event<T> event) {
+		if (event == null)
+			throw new NullPointerException();
 		if (!listeners.containsKey(event)) synchronized(listeners) {
 			listeners.putIfAbsent(event, new CopyOnWriteArrayList<BiConsumer<Event<?>, ? super T>>());
 		}
 		return listeners.get(event);
 	}
 	
-	private <T> void addListener(@Nonnull Event<T> event, @Nonnull BiConsumer<Event<?>, ? super T> listener) {
-		Assert.allNotNull(event, listener);
+	private <T> void addListener(Event<T> event, BiConsumer<Event<?>, ? super T> listener) {
+		if (event == null || listener == null)
+			throw new NullPointerException();
 		checkActive();
-		getListeners(event).add((BiConsumer<Event<?>, T>) listener);
+		getListeners(event.isProxy() ? ((Event.Proxy<T>) event).proxied() : event).add((BiConsumer<Event<?>, T>) listener);
 		invalidateBaked();
 	}
 	
-	public <T> void listenTo(@Nonnull Event<T> event, @Nonnull BiConsumer<Event<?>, ? super T> listener) {
+	public <T> void listenTo(Event<T> event, BiConsumer<Event<?>, ? super T> listener) {
 		addListener(event, listener);
 	}
 	
-	public <T> void listenTo(@Nonnull Event<T> event, @Nonnull Consumer<? super T> listener) {
+	public <T> void listenTo(Event<T> event, Consumer<? super T> listener) {
 		addListener(event, (e, v) -> listener.accept(v));
 	}
 	
-	public void listenTo(@Nonnull Event<?> event, @Nonnull Runnable listener) {
+	public void listenTo(Event<?> event, Runnable listener) {
 		addListener(event, (e, v) -> listener.run());
 	}
 	
 	@SuppressWarnings("rawtypes")
-	private void accept(@Nonnull Event dispatcher, @Nonnull Event event, @Nullable Object value) {
-		Assert.allNotNull(dispatcher, event);
+	private void accept(Event dispatcher, Event event, Object value) {
+		if (dispatcher == null || event == null)
+			throw new NullPointerException();
+		if (event.isProxy())
+			throw new IllegalArgumentException("Cannot accept for a proxy Event");
 		checkActive();
-		if (!event.isBlank()) Assert.notNull(value);
+		if (!event.isBlank() && value == null)
+			throw new NullPointerException();
 		BiConsumer[] baked = getBaked(event);
 		if (baked == null) {
-			if (event.isBlank() && event.castBlank().isRoot()) return; 
-			else accept(dispatcher, event.parent(), event.isBlank() ? null : event.castValued().convert(value));
+			if (event.isBlank() && ((Event.Blank) event).isRoot()) return; 
+			else accept(dispatcher, event.parent(), event.isBlank() ? null : ((Event.Valued) event).convert(value));
 		}
 		else for (BiConsumer listener : baked) {
 			try {
@@ -166,12 +176,13 @@ public class EventChannel {
 		return CHANNELS.stream().anyMatch((c) -> c.id == id);
 	}
 	
-	private static boolean isActive(@Nonnull EventChannel channel) {
-		Assert.notNull(channel);
+	private static boolean isActive(EventChannel channel) {
+		if (channel == null)
+			throw new NullPointerException();
 		return CHANNELS.stream().anyMatch((c) -> c == channel);
 	}
 	
-	private static void checkActive(@Nonnull EventChannel channel) {
+	private static void checkActive(EventChannel channel) {
 		if (!isActive(channel)) throw new IllegalStateException("This EventChannel is no longer active");
 	}
 	
@@ -186,24 +197,29 @@ public class EventChannel {
 	}
 	
 	synchronized
-	public static void killChannel(@Nonnull EventChannel channel) {
-		Assert.notNull(channel);
+	public static void killChannel(EventChannel channel) {
+		if (channel == null)
+			throw new NullPointerException();
 		CHANNELS.remove(channel);
 	}
 	
-	private static <T> void dispatchTo(@Nonnull Event<T> event, @Nullable T value) {
-		Assert.notNull(event);
+	private static <T> void dispatchTo(Event<T> event, T value) {
+		if (event == null)
+			throw new NullPointerException();
+		if (event.isProxy())
+			throw new IllegalArgumentException("Cannot dispatch a proxy Event");
 		for (EventChannel channel : CHANNELS) 
 			channel.accept(event, event, value);
 	}
 	
-	public static <T> T dispatch(@Nonnull Event<T> event, @Nonnull T value) {
-		Assert.notNull(value);
+	public static <T> T dispatch(Event<T> event, T value) {
+		if (value == null)
+			throw new NullPointerException();
 		dispatchTo(event, value);
 		return value;
 	}
 	
-	public static void dispatch(@Nonnull Event<Void> event) {
+	public static void dispatch(Event<Void> event) {
 		dispatchTo(event, null);
 	}
 
