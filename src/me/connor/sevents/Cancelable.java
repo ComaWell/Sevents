@@ -1,4 +1,4 @@
-package me.connor.event;
+package me.connor.sevents;
 
 import java.util.concurrent.atomic.*;
 import java.util.function.*;

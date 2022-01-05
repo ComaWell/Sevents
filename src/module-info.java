@@ -1,3 +1,3 @@
 module me.connor.eventmapper {
-	exports me.connor.event;
+	exports me.connor.sevents;
 }

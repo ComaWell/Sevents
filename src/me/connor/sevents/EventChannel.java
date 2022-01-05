@@ -1,4 +1,4 @@
-package me.connor.event;
+package me.connor.sevents;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -141,7 +141,7 @@ public class EventChannel {
 		if (dispatcher == null || event == null)
 			throw new NullPointerException();
 		if (event.isProxy())
-			throw new IllegalArgumentException("Cannot accept for a proxy Event");
+			throw new IllegalArgumentException("Cannot accept a proxy Event");
 		checkActive();
 		if (!event.isBlank() && value == null)
 			throw new NullPointerException();
