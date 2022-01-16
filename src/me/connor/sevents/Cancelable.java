@@ -3,6 +3,21 @@ package me.connor.sevents;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 
+/**
+ * <p>Cancelables are a wrapper Interface used for {@link Event Events} that can be canceled
+ * in some way by their listeners. This Object cannot by itself enforce cancelation however,
+ * it only serves as an entry point for listeners. Code that is to be executed or not executed
+ * based on a Cancelable {@link Event Event's} state should utilize said Cancelable's
+ * {@link Cancelable#isCanceled()} method after it has been dispatched. Note that because it is not
+ * guaranteed that asynchronous listeners will complete execution before a dispatch is complete,
+ * asynchronously mutating a Cancelable instance, even an {@link Atomic} one, may yield
+ * undefined or undesirable behavior.
+ * </p>
+ * 
+ * @author Connor Wellington
+ *
+ * @param <T> The type of Object that is being wrapped by this Cancelable.
+ */
 public interface Cancelable<T> {
 
 	T value();
