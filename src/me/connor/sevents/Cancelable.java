@@ -26,12 +26,20 @@ public interface Cancelable<T> {
 	
 	void setCanceled(boolean cancel);
 	
+	public static <T> Cancelable<T> simple(T value, boolean canceled) {
+		return new Simple<>(value, canceled);
+	}
+	
 	public static <T> Cancelable<T> simple(T value) {
-		return new Simple<>(value);
+		return simple(value, false);
+	}
+	
+	public static <T> Cancelable<T> atomic(T value, boolean canceled) {
+		return new Atomic<>(value, canceled);
 	}
 	
 	public static <T> Cancelable<T> atomic(T value) {
-		return new Atomic<>(value);
+		return atomic(value, false);
 	}
 	
 	public static <T> Cancelable<T> proxy(T value, BooleanSupplier supplier, Consumer<Boolean> updater) {
@@ -67,11 +75,11 @@ public interface Cancelable<T> {
 		
 		private boolean canceled;
 		
-		private Simple(T value) {
+		private Simple(T value, boolean canceled) {
 			if (value == null)
 				throw new NullPointerException();
 			this.value = value;
-			canceled = false;
+			this.canceled = canceled;
 		}
 		
 		@Override
@@ -97,11 +105,11 @@ public interface Cancelable<T> {
 		
 		private final AtomicBoolean canceled;
 		
-		private Atomic(T value) {
+		private Atomic(T value, boolean canceled) {
 			if (value == null)
 				throw new NullPointerException();
 			this.value = value;
-			canceled = new AtomicBoolean(false);
+			this.canceled = new AtomicBoolean(canceled);
 		}
 		
 		@Override

@@ -1,22 +1,23 @@
 package me.connor.sevents;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class EventChannel {
+public final class EventChannel {
 	
 	private final int id;
+	private final boolean async;
 	
-	@SuppressWarnings("rawtypes")
-	private final HashMap<Event, List> listeners = new HashMap<>();
+	private final EventMap observers = new EventMap();
+	private final EventMap mutators = new EventMap();
+	private final EventMap monitors = new EventMap();
 	
-	@SuppressWarnings("rawtypes")
-	private Map<Event, BiConsumer[]> baked;
-	
-	private EventChannel(int id) {
+	private EventChannel(int id, boolean async) {
 		this.id = id;
+		this.async = async;
 	}
 	
 	public int id() {
@@ -31,196 +32,224 @@ public class EventChannel {
 		checkActive(this);
 	}
 	
-	private boolean isBaked() {
-		return baked != null;
-	}
-	
-	private void invalidateBaked() {
-		baked = null;
-	}
-	
-	synchronized
-	private <T> BiConsumer<Event<?>, T>[] getBaked(Event<T> event) {
-		if (event == null)
-			throw new NullPointerException();
-		if (!isBaked()) bake();
-		return baked.get(event);
-	}
-	
-	@SuppressWarnings("rawtypes")
-	private void bake() {
-		HashMap<Event, BiConsumer[]> baked = new HashMap<>();
-		for (Event e : Set.copyOf(listeners.keySet())) {
-			baked.put(e, bake(e));
-		}
-		this.baked = Map.copyOf(baked);
-	}
-	
-	private <T> BiConsumer<Event<?>, T>[] bake(Event<T> event) {
-		return (event.isBlank() ? bakeBlank((Event.Blank) event) : bakeValued((Event.Valued<T>) event)).toArray(BiConsumer[]::new);
-	}
-	
-	private List<BiConsumer<Event<?>, Void>> bakeBlank(Event.Blank event) {
-		if (event == null)
-			throw new NullPointerException();
-		List<BiConsumer<Event<?>, Void>> listeners = new ArrayList<>(getListeners(event));
-		if (!event.isRoot()) listeners.addAll(bakeBlank(event.parent()));
-		return listeners;
-	}
-	
-	private <T> List<BiConsumer<Event<?>, T>> bakeValued(Event.Valued<T> event) {
-		if (event == null)
-			throw new NullPointerException();
-		List<BiConsumer<Event<?>, T>> listeners = new ArrayList<>(getListeners(event));
-		listeners.addAll(bakeForDescendant(event.parent(), event));
-		return listeners;
-	}
-	
-	private <T, P> List<BiConsumer<Event<?>, T>> bakeForDescendant(Event<P> event, Event.Valued<T> descendant) {
-		if (event == null || descendant == null)
-			throw new NullPointerException();
-		if (event.isBlank()) return convertListeners(bakeBlank((Event.Blank) event), (Event.Blank) event, descendant);
-		List<BiConsumer<Event<?>, T>> listeners = new ArrayList<>(convertListeners(getListeners(event), event, descendant));
-		listeners.addAll(bakeForDescendant(event.parent(), descendant));
-		return listeners;
-	}
-	
-	private <T, P> List<BiConsumer<Event<?>, T>> convertListeners(List<BiConsumer<Event<?>, P>> listeners, Event<P> from, Event<T> to) {
-		if (listeners == null || from == null || to == null)
-			throw new NullPointerException();
-		return listeners.stream().map((l) -> convertListener(l, from, to)).collect(Collectors.toList());
-	}
-	
-	//TODO: There's one million percent a better/cleaner/faster way to do this
-	@SuppressWarnings("rawtypes")
-	private <T, P> BiConsumer<Event<?>, T> convertListener(BiConsumer<Event<?>, P> listener, Event<P> from, Event<T> to) {
-		if (listeners == null || from == null || to == null)
-			throw new NullPointerException();
-		return (e, t) -> {
-			Object val = t;
-			Event current = from;
-			do {
-				if (current.isBlank()) break;
-				else val = ((Event.Valued) current).convert(val);
-			} while((current = current.parent()) != to); 
-			listener.accept(e, (P) val);
-		};
-	}
-	
-	private <T> List<BiConsumer<Event<?>, T>> getListeners(Event<T> event) {
-		if (event == null)
-			throw new NullPointerException();
-		if (!listeners.containsKey(event)) synchronized(listeners) {
-			listeners.putIfAbsent(event, new CopyOnWriteArrayList<BiConsumer<Event<?>, ? super T>>());
-		}
-		return listeners.get(event);
-	}
-	
-	private <T> void addListener(Event<T> event, BiConsumer<Event<?>, ? super T> listener) {
-		if (event == null || listener == null)
+	public <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer) {
+		if (event == null || observer == null)
 			throw new NullPointerException();
 		checkActive();
-		getListeners(event.isProxy() ? ((Event.Proxy<T>) event).proxied() : event).add((BiConsumer<Event<?>, T>) listener);
-		invalidateBaked();
+		synchronized(observers) {
+			observers.add(event, observer);
+		}
 	}
 	
-	public <T> void listenTo(Event<T> event, BiConsumer<Event<?>, ? super T> listener) {
-		addListener(event, listener);
+	public <T> void observe(Event<T> event, Consumer<? super T> observer) {
+		if (observer == null)
+			throw new NullPointerException();
+		observe(event, (e, v) -> observer.accept(v));
 	}
 	
-	public <T> void listenTo(Event<T> event, Consumer<? super T> listener) {
-		addListener(event, (e, v) -> listener.accept(v));
+	public void observe(Event<?> event, Runnable observer) {
+		if (observer == null)
+			throw new NullPointerException();
+		observe(event, (e, v) -> observer.run());
 	}
 	
-	public void listenTo(Event<?> event, Runnable listener) {
-		addListener(event, (e, v) -> listener.run());
+	public <T> void mutate(Event<T> event, BiConsumer<Event<?>, ? super T> mutator) {
+		if (event == null || mutator == null)
+			throw new NullPointerException();
+		checkActive();
+		synchronized(mutators) {
+			mutators.add(event, mutator);
+		}
+	}
+	
+	public <T> void mutate(Event<T> event, Consumer<? super T> mutator) {
+		if (mutator == null)
+			throw new NullPointerException();
+		mutate(event, (e, v) -> mutator.accept(v));
+	}
+	
+	public void mutate(Event<?> event, Runnable mutator) {
+		if (mutator == null)
+			throw new NullPointerException();
+		mutate(event, (e, v) -> mutator.run());
+	}
+	
+	public <T> void monitor(Event<T> event, BiConsumer<Event<?>, ? super T> monitor) {
+		if (event == null || monitor == null)
+			throw new NullPointerException();
+		checkActive();
+		synchronized(monitors) {
+			monitors.add(event, monitor);
+		}
+	}
+	
+	public <T> void monitor(Event<T> event, Consumer<? super T> monitor) {
+		if (monitor == null)
+			throw new NullPointerException();
+		monitor(event, (e, v) -> monitor.accept(v));
+	}
+	
+	public void monitor(Event<?> event, Runnable monitor) {
+		if (monitor == null)
+			throw new NullPointerException();
+		monitor(event, (e, v) -> monitor.run());
 	}
 	
 	@SuppressWarnings("rawtypes")
-	private void accept(Event dispatcher, Event event, Object value) {
-		if (dispatcher == null || event == null)
-			throw new NullPointerException();
-		if (event.isProxy())
-			throw new IllegalArgumentException("Cannot accept a proxy Event");
-		checkActive();
-		if (!event.isBlank() && value == null)
-			throw new NullPointerException();
-		BiConsumer[] baked = getBaked(event);
-		if (baked == null) {
-			if (event.isBlank() && ((Event.Blank) event).isRoot()) return; 
-			else accept(dispatcher, event.parent(), event.isBlank() ? null : ((Event.Valued) event).convert(value));
+	private List<EventDispatchException> accept(Event event, Object value, EventMap map, boolean async) {
+		BiConsumer[] baked = map.get(event);
+		if (baked == null || baked.length == 0)
+			return List.of();
+		if (async) try {
+			return THREAD_POOL.submit(() -> Arrays.stream(baked)
+					.parallel()
+					.map((l) -> {
+						try {
+							l.accept(event, value);
+							return null;
+						} catch (Exception e) {
+							return new EventDispatchException(event, e);
+						}
+					})
+					.filter((e) -> e != null).collect(Collectors.toUnmodifiableList()
+					)).get();
+		} catch (InterruptedException | ExecutionException e) {
+			return List.of(new EventDispatchException(event, e));
 		}
-		else for (BiConsumer listener : baked) {
-			try {
-				listener.accept(dispatcher, value);
-			} catch (Exception e) {
-				System.err.println("Unmanaged Exception thrown from listener of " + event.name());
-				e.printStackTrace();
+		else {
+			List<EventDispatchException> failed = new ArrayList<>();
+			for (BiConsumer listener : baked) {
+				try {
+					listener.accept(event, value);
+				} catch (Exception e) {
+					failed.add(new EventDispatchException(event, e));
+				}
 			}
+			return failed;
 		}
 	}
 	
-	@Override
-	public int hashCode() {
-		return Integer.hashCode(id);
+	@SuppressWarnings("rawtypes")
+	private List<EventDispatchException> observersAccept(Event event, Object value) {
+		return accept(event, value, observers, async);
 	}
 	
-	@Override
-	public boolean equals(Object obj) {
-		return obj == this || obj instanceof EventChannel && ((EventChannel) obj).id == id;
+	@SuppressWarnings("rawtypes")
+	private List<EventDispatchException> mutatorsAccept(Event event, Object value) {
+		return accept(event, value, mutators, false);
 	}
+	
+	@SuppressWarnings("rawtypes")
+	private List<EventDispatchException> monitorsAccept(Event event, Object value) {
+		return accept(event, value, monitors, async);
+	}
+	
+	private static final ForkJoinPool THREAD_POOL = new ForkJoinPool();
 	
 	private static final Set<EventChannel> CHANNELS = Collections.newSetFromMap(new WeakHashMap<>());
-	
-	private static boolean hasChannel(int id) {
-		return CHANNELS.stream().anyMatch((c) -> c.id == id);
-	}
+	private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
 	
 	private static boolean isActive(EventChannel channel) {
 		if (channel == null)
 			throw new NullPointerException();
-		return CHANNELS.stream().anyMatch((c) -> c == channel);
+		for (EventChannel c : Set.copyOf(CHANNELS)) {
+			if (c == channel) return true;
+		}
+		return false;
 	}
 	
 	private static void checkActive(EventChannel channel) {
 		if (!isActive(channel)) throw new IllegalStateException("This EventChannel is no longer active");
 	}
 	
-	synchronized
-	public static EventChannel newChannel() {
-		int id = -1;
-		while (hasChannel(++id)) { }
-		EventChannel channel = new EventChannel(id);
-		if (!CHANNELS.add(channel))
-			throw new InternalError("Failed to insert EventChannel " + id);
+	/*
+	 * Note: Due to the way this is programmed, there is a limit to the number of EventChannels
+	 * that can be created in a given runtime (Integer.MAX_VALUE). This shouldn't be an issue however,
+	 * generally EventChannels should only be added for situations where groups of listeners can be
+	 * loaded/unloaded dynamically (such as with a plugin system), so it isn't realisitic for
+	 * more than a few (maybe a few dozen/hundred in extreme cases) channels to be created anyways.
+	 */
+	private static EventChannel newChannel(boolean async) {
+		int id = ID_GENERATOR.getAndIncrement();
+		if (id < 0)
+			throw new ArithmeticException("The maximum number of EventChannels have been created");
+		EventChannel channel = new EventChannel(id, async);
+		synchronized (CHANNELS) {
+			if (!CHANNELS.add(channel))
+				//Only a sanity check, this should never happen
+				throw new InternalError("Failed to insert EventChannel " + id);
+		}
 		return channel;
 	}
 	
-	synchronized
-	public static void killChannel(EventChannel channel) {
-		if (channel == null)
-			throw new NullPointerException();
-		CHANNELS.remove(channel);
+	//Note: A synchronous channel's non-mutating listeners are only guaranteed sequential execution with respect to
+	//the other listeners of that channel
+	public static EventChannel sync() {
+		return newChannel(false);
 	}
 	
-	private static <T> void dispatchTo(Event<T> event, T value) {
+	//Note: An asynchronous channel will still invoke mutator listeners
+	//sequentially
+	public static EventChannel async() {
+		return newChannel(true);
+	}
+	
+	public static void kill(EventChannel channel) {
+		if (channel == null)
+			throw new NullPointerException();
+		if (!CHANNELS.contains(channel))
+			return;
+		synchronized (CHANNELS) {
+			CHANNELS.remove(channel);
+		}
+	}
+	
+	private static <T> void dispatchAll(Event<T> event, T value) {
 		if (event == null)
 			throw new NullPointerException();
 		if (event.isProxy())
 			throw new IllegalArgumentException("Cannot dispatch a proxy Event");
-		for (EventChannel channel : CHANNELS) 
-			channel.accept(event, event, value);
+		//copied for async dispatch safety
+		Set<EventChannel> channels = Set.copyOf(CHANNELS);
+		List<EventDispatchException> failed = new CopyOnWriteArrayList<>();
+		try {
+			THREAD_POOL.submit(() -> channels.parallelStream()
+					.forEach((c) -> failed.addAll(c.observersAccept(event, value)))
+					).get();
+		} catch (InterruptedException | ExecutionException e) {
+			failed.add(new EventDispatchException(event, e));
+		}
+		for (EventChannel channel : channels) {
+			failed.addAll(channel.mutatorsAccept(event, value));
+		}
+		try {
+			THREAD_POOL.submit(() -> channels.parallelStream()
+					.forEach((c) -> failed.addAll(c.monitorsAccept(event, value)))
+					).get();
+		} catch (InterruptedException | ExecutionException e) {
+			failed.add(new EventDispatchException(event, e));
+		}
+		//Prevents endless dispatch loop if an Event.ERR listener throws an exception
+		if (event == Event.ERR || event.isDescendantOf(Event.ERR)) {
+			for (EventDispatchException e : failed) {
+				System.err.println("An unmanaged exception was thrown while dispatching "
+						+ event.name() + ":");
+				e.printStackTrace();
+			}
+		}
+		else for (EventDispatchException e : failed)
+			dispatch(Event.ERR, e);
 	}
 	
 	public static <T> T dispatch(Event<T> event, T value) {
 		if (value == null)
 			throw new NullPointerException();
-		dispatchTo(event, value);
+		dispatchAll(event, value);
 		return value;
 	}
 	
 	public static void dispatch(Event<Void> event) {
-		dispatchTo(event, null);
+		dispatchAll(event, null);
 	}
 
 }

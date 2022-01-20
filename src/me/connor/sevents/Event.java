@@ -13,7 +13,7 @@ import java.util.function.*;
  * <p>Events do not by themselves hold, create, or dispatch data, nor are Events instatiated as part of the process of dispatching.
  * Rather, they should generally be instantiated, referenced, and treated as a static constant. Note that because Events need to be referenced
  * in order to be listened to or dispatched, they should be declared publicly. (In situations where having control over who/what can dispatch an Event
- * is desired, please see {@linkplain Event.Proxy}.) Events follow a tree-like hierarchy of lineage, similar 
+ * is desired, please see {@link Event.Proxy}.) Events follow a tree-like hierarchy of lineage, similar 
  * to interface or class inheritance. By instantiating a new Event, it effectively creates a new branch for dispatching and
  * listening to occur. Child Events can then be instantiated from that Event, adding to its lineage. When an Event is dispatched, it will trigger all
  * listeners that are registered to it as well as all of the ancestors of said Event (passing along the Object that was used for dispatch if applicable).
@@ -51,6 +51,19 @@ public abstract class Event<T> {
 	 */
 	public static final Blank ROOT = new Blank("Event", null);
 	
+	static final Valued<EventDispatchException> ERR = valued("DispatchExceptionEvent");
+	
+	/**
+	 * <p>The Event responsible for catching {@link EventDispatchException EventDispatchExceptions}, which occur
+	 * when an unmanaged {@link Exception} is thrown by a listener. Generally, this Event should only be listened
+	 * to for logging and debugging purposes; it is considered an error for listeners to throw Exceptions as a matter
+	 * of design.
+	 * </p>
+	 * 
+	 * <p>Note that this is a {@link Proxy} Event instance, meaning that it can be listened to but not dispatched directly.</p>
+	 */
+	public static final Proxy<EventDispatchException> ERR_PROXY = ERR.proxy();
+	
 	private final String name;
 	
 	private Event(String name) {
@@ -87,6 +100,11 @@ public abstract class Event<T> {
 	public abstract boolean isBlank();
 	
 	/**
+	 * @return true if this Event is the {@link Event#ROOT root} instance, false otherwise.
+	 */
+	public abstract boolean isRoot();
+	
+	/**
 	 * @return true if this Event is a {@link Proxy} of another Event, false if it is the direct Event instance.
 	 * 
 	 *  @see Event.Proxy
@@ -103,9 +121,24 @@ public abstract class Event<T> {
 	 */
 	public abstract Event<?> parent();
 	
+	public boolean isAncestorOf(Event<?> other) {
+		if (other == null)
+			throw new NullPointerException();
+		//Note: this logic means it will return false if other == this
+		while (!(other = other.parent()).isRoot()) {
+			if (other == this) return true;
+		}
+		return false;
+	}
+	
+	public boolean isDescendantOf(Event<?> other) {
+		if (other == null)
+			throw new NullPointerException();
+		return other.isAncestorOf(this);
+	}
+	
 	/**
 	 * @return a {@link Proxy}-equivalent instance of this Event, or itself if it is already a proxy.
-	 * For more information on what proxies are and the purpose they serve, please see {@link Event.Proxy}.
 	 * 
 	 * @see Event.Proxy
 	 */
@@ -122,7 +155,7 @@ public abstract class Event<T> {
 	 * @return a new {@link Blank} Event instance.
 	 */
 	public static Blank blank(String name) {
-		return ROOT.child(name);
+		return ROOT.blankChild(name);
 	}
 	
 	/**
@@ -164,15 +197,13 @@ public abstract class Event<T> {
 		}
 		
 		@Override
-		public boolean isProxy() {
-			return false;
-		}
-		
-		/**
-		 * @return true if this Blank Event is the {@link Event#ROOT root} instance, false otherwise.
-		 */
 		public boolean isRoot() {
 			return parent == null;
+		}
+		
+		@Override
+		public boolean isProxy() {
+			return false;
 		}
 		
 		@Override
@@ -201,7 +232,7 @@ public abstract class Event<T> {
 		 * 
 		 * @return a new {@link Blank} Event instance.
 		 */
-		public Blank child(String name) {
+		public Blank blankChild(String name) {
 			return new Blank(name, this);
 		}
 		
@@ -264,6 +295,11 @@ public abstract class Event<T> {
 		}
 		
 		@Override
+		public boolean isRoot() {
+			return false;
+		}
+		
+		@Override
 		public boolean isProxy() {
 			return false;
 		}
@@ -292,9 +328,9 @@ public abstract class Event<T> {
 		 * 
 		 * @return a new {@link Valued} Event instance.
 		 * 
-		 * @see Valued#child(String)
+		 * @see Valued#valuedChild(String)
 		 */
-		public <C> Valued<C> child(String name, Function<C, T> converter) {
+		public <C> Valued<C> valuedChild(String name, Function<C, T> converter) {
 			return new Valued<>(name, this, converter);
 		}
 		
@@ -308,10 +344,10 @@ public abstract class Event<T> {
 		 * (but is strongly recommended) to be unique.
 		 * @return a new {@link Valued} Event instance.
 		 * 
-		 * @see Valued#child(String, Function)
+		 * @see Valued#valuedChild(String, Function)
 		 */
-		public <C extends T> Valued<C> child(String name) {
-			return child(name, (t) -> t);
+		public <C extends T> Valued<C> valuedChild(String name) {
+			return valuedChild(name, (t) -> t);
 		}
 		
 		/**
@@ -335,28 +371,12 @@ public abstract class Event<T> {
 		
 	}
 	
-	
 	/**
-	 * <p>Valued Events dispatch Objects as data to be consumed by their listeners. It is recommended but
-	 * not required that data be immutable wherever possible, as well as for Events to clearly document when
-	 * asynchronous listeners are or aren't permitted. 
-	 * </p>
-	 * 
-	 * <p>Because Events trigger the listeners of their ancestors, any child of a Valued Event will need to
-	 * dispatch data that can be converted into data that its direct parent can also dispatch. For example, 
-	 * a Valued Event of type {@link String} can have a child that is also of type {@link String} without issue,
-	 * however in order for it to have a child of type {@link Integer}, a converter {@link Function} will
-	 * have to be provided when the child is instantiated, which is used to convert {@link Integer} values
-	 * dispatched for that child to {@link String} values that can also be dispatched for its parent.
-	 * </p>
-	 */
-	
-	/**
-	 * <p>Proxy Events can be used when it is desired to control who or what has access to dispatch or create children for
-	 * an Event, without imposing the same restrictions for registering listeners to said Event. For all methods specified
+	 * <p>Proxy Events can be used when it is desired to control who or what can dispatch or create children for
+	 * an Event, while still allowing listeners to be registered for said Event freely. For all methods specified
 	 * in Event.class, a Proxy will return the same value as the Event it is proxying. Additionally, using a proxy instance
-	 * to register a listener will register the listener to the Event that it is proxying (Proxy Events themselves cannot
-	 * have listeners). However, Proxies do not have a dispatch method, and attempting to dispatch a Proxy event directly
+	 * to register a listener will register the listener to the Event that it is proxying. (Proxy Events themselves cannot
+	 * have listeners.) However, Proxies do not have a dispatch method, and attempting to dispatch a Proxy event directly
 	 * via {@link EventChannel#dispatch(Event)} or {@link EventChannel#dispatch(Event, Object)} will result in an
 	 * {@link IllegalArgumentException} being thrown.
 	 * <p>
@@ -384,8 +404,8 @@ public abstract class Event<T> {
 	 * @see Event.Valued
 	 * @see EventChannel
 	 * 
-	 * @implSpec it is recommended that it be conveyed either in the field/method name or documentation of a Proxy Event that
-	 * it is such, to prevent accidental attempts at dispatching them.
+	 * @implSpec it is recommended that it be conveyed in some way when an Event instance is a Proxy,
+	 * to prevent accidental attempts at dispatching them.
 	 */
 	public static final class Proxy<T> extends Event<T> {
 		
@@ -399,6 +419,11 @@ public abstract class Event<T> {
 		@Override
 		public boolean isBlank() {
 			return proxied.isBlank();
+		}
+		
+		@Override
+		public boolean isRoot() {
+			return proxied.isRoot();
 		}
 		
 		@Override
