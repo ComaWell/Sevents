@@ -4,42 +4,38 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
-import java.util.stream.*;
+import java.util.stream.Collectors;
 
-public final class EventChannel {
+public abstract class EventChannel {
 	
-	private final int id;
-	private final boolean async;
-	
-	private final EventMap observers = new EventMap();
-	private final EventMap mutators = new EventMap();
-	private final EventMap monitors = new EventMap();
-	
-	private EventChannel(int id, boolean async) {
-		this.id = id;
-		this.async = async;
+	public static enum ListenerType {
+		
+		OBSERVER,
+		MUTATOR,
+		MONITOR
+		
 	}
 	
-	public int id() {
+	private int id;
+	
+	protected EventChannel(int id) {
+		this.id = id;
+	}
+	
+	
+	public final int id() {
 		return id;
 	}
 	
-	public boolean isActive() {
+	public final boolean isActive() {
 		return isActive(this);
 	}
 	
-	private void checkActive() {
+	protected final void checkActive() {
 		checkActive(this);
 	}
 	
-	public <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer) {
-		if (event == null || observer == null)
-			throw new NullPointerException();
-		checkActive();
-		synchronized(observers) {
-			observers.add(event, observer);
-		}
-	}
+	public abstract <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer);
 	
 	public <T> void observe(Event<T> event, Consumer<? super T> observer) {
 		if (observer == null)
@@ -53,14 +49,7 @@ public final class EventChannel {
 		observe(event, (e, v) -> observer.run());
 	}
 	
-	public <T> void mutate(Event<T> event, BiConsumer<Event<?>, ? super T> mutator) {
-		if (event == null || mutator == null)
-			throw new NullPointerException();
-		checkActive();
-		synchronized(mutators) {
-			mutators.add(event, mutator);
-		}
-	}
+	public abstract <T> void mutate(Event<T> event, BiConsumer<Event<?>, ? super T> mutator);
 	
 	public <T> void mutate(Event<T> event, Consumer<? super T> mutator) {
 		if (mutator == null)
@@ -74,14 +63,7 @@ public final class EventChannel {
 		mutate(event, (e, v) -> mutator.run());
 	}
 	
-	public <T> void monitor(Event<T> event, BiConsumer<Event<?>, ? super T> monitor) {
-		if (event == null || monitor == null)
-			throw new NullPointerException();
-		checkActive();
-		synchronized(monitors) {
-			monitors.add(event, monitor);
-		}
-	}
+	public abstract <T> void monitor(Event<T> event, BiConsumer<Event<?>, ? super T> monitor);
 	
 	public <T> void monitor(Event<T> event, Consumer<? super T> monitor) {
 		if (monitor == null)
@@ -95,53 +77,121 @@ public final class EventChannel {
 		monitor(event, (e, v) -> monitor.run());
 	}
 	
-	@SuppressWarnings("rawtypes")
-	private List<EventDispatchException> accept(Event event, Object value, EventMap map, boolean async) {
-		BiConsumer[] baked = map.get(event);
-		if (baked == null || baked.length == 0)
-			return List.of();
-		if (async) try {
-			return THREAD_POOL.submit(() -> Arrays.stream(baked)
-					.parallel()
-					.map((l) -> {
-						try {
-							l.accept(event, value);
-							return null;
-						} catch (Exception e) {
-							return new EventDispatchException(event, e);
-						}
-					})
-					.filter((e) -> e != null).collect(Collectors.toUnmodifiableList()
-					)).get();
-		} catch (InterruptedException | ExecutionException e) {
-			return List.of(new EventDispatchException(event, e));
+	abstract <T> List<EventDispatchException> accept(Event<T> event, T value, ListenerType type);
+	
+	@Override
+	public final int hashCode() {
+		return id;
+	}
+	
+	@Override
+	public final boolean equals(Object obj) {
+		return obj instanceof EventChannel && ((EventChannel) obj).id == id;
+	}
+	
+	public static final class Default extends EventChannel {
+		
+		private final boolean async;
+		
+		private final EventMap observers = new EventMap();
+		private final EventMap mutators = new EventMap();
+		private final EventMap monitors = new EventMap();
+
+		protected Default(int id, boolean async) {
+			super(id);
+			this.async = async;
 		}
-		else {
-			List<EventDispatchException> failed = new ArrayList<>();
-			for (BiConsumer listener : baked) {
-				try {
-					listener.accept(event, value);
-				} catch (Exception e) {
-					failed.add(new EventDispatchException(event, e));
+
+		@Override
+		public <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer) {
+			if (event == null || observer == null)
+				throw new NullPointerException();
+			checkActive();
+			synchronized(observers) {
+				observers.add(event, observer);
+			}
+		}
+
+		@Override
+		public <T> void mutate(Event<T> event, BiConsumer<Event<?>, ? super T> mutator) {
+			if (event == null || mutator == null)
+				throw new NullPointerException();
+			checkActive();
+			synchronized(mutators) {
+				mutators.add(event, mutator);
+			}
+		}
+
+		@Override
+		public <T> void monitor(Event<T> event, BiConsumer<Event<?>, ? super T> monitor) {
+			if (event == null || monitor == null)
+				throw new NullPointerException();
+			checkActive();
+			synchronized(monitors) {
+				monitors.add(event, monitor);
+			}
+		}
+		
+		private <T> List<EventDispatchException> accept(Event<T> event, T value, EventMap map, boolean async) {
+			BiConsumer<Event<?>, T>[] baked = map.get(event);
+			if (baked == null || baked.length == 0)
+				return List.of();
+			if (async) try {
+				return THREAD_POOL.submit(() -> Arrays.stream(baked)
+						.parallel()
+						.map((l) -> {
+							try {
+								l.accept(event, value);
+								return null;
+							} catch (Exception e) {
+								return new EventDispatchException(event, e);
+							}
+						})
+						.filter((e) -> e != null).collect(Collectors.toUnmodifiableList()
+						)).get();
+			} catch (InterruptedException | ExecutionException e) {
+				return List.of(new EventDispatchException(event, e));
+			}
+			else {
+				List<EventDispatchException> failed = new ArrayList<>();
+				for (BiConsumer<Event<?>, T> listener : baked) {
+					try {
+						listener.accept(event, value);
+					} catch (Exception e) {
+						failed.add(new EventDispatchException(event, e));
+					}
+				}
+				return failed;
+			}
+		}
+
+		@Override
+		<T> List<EventDispatchException> accept(Event<T> event, T value, ListenerType type) {
+			EventMap map;
+			boolean async;
+			switch (type) {
+				case OBSERVER: {
+					map = observers;
+					async = this.async;
+					break;
+				}
+				case MUTATOR: {
+					map = mutators;
+					async = false;
+					break;
+				}
+				case MONITOR: {
+					map = monitors;
+					async = this.async;
+					break;
+				}
+				default: {
+					throw new InternalError("ListenerType " + type.name() + " not implemented for EventChannel.Default");
 				}
 			}
-			return failed;
+			return accept(event, value, map, async);
 		}
-	}
-	
-	@SuppressWarnings("rawtypes")
-	private List<EventDispatchException> observersAccept(Event event, Object value) {
-		return accept(event, value, observers, async);
-	}
-	
-	@SuppressWarnings("rawtypes")
-	private List<EventDispatchException> mutatorsAccept(Event event, Object value) {
-		return accept(event, value, mutators, false);
-	}
-	
-	@SuppressWarnings("rawtypes")
-	private List<EventDispatchException> monitorsAccept(Event event, Object value) {
-		return accept(event, value, monitors, async);
+		
 	}
 	
 	private static final ForkJoinPool THREAD_POOL = new ForkJoinPool();
@@ -150,12 +200,7 @@ public final class EventChannel {
 	private static final AtomicInteger ID_GENERATOR = new AtomicInteger(0);
 	
 	private static boolean isActive(EventChannel channel) {
-		if (channel == null)
-			throw new NullPointerException();
-		for (EventChannel c : Set.copyOf(CHANNELS)) {
-			if (c == channel) return true;
-		}
-		return false;
+		return CHANNELS.contains(channel);
 	}
 	
 	private static void checkActive(EventChannel channel) {
@@ -169,29 +214,20 @@ public final class EventChannel {
 	 * loaded/unloaded dynamically (such as with a plugin system), so it isn't realisitic for
 	 * more than a few (maybe a few dozen/hundred in extreme cases) channels to be created anyways.
 	 */
-	private static EventChannel newChannel(boolean async) {
+	public static EventChannel register(IntFunction<EventChannel> generator) {
 		int id = ID_GENERATOR.getAndIncrement();
 		if (id < 0)
 			throw new ArithmeticException("The maximum number of EventChannels have been created");
-		EventChannel channel = new EventChannel(id, async);
+		EventChannel channel = generator.apply(id);
+		if (channel.id() != id)
+			throw new IllegalArgumentException("The id of this EventChannel does not match the id it was assigned"
+					+ "(expected " + id + ", received " + channel.id() + ")");
 		synchronized (CHANNELS) {
 			if (!CHANNELS.add(channel))
 				//Only a sanity check, this should never happen
 				throw new InternalError("Failed to insert EventChannel " + id);
 		}
 		return channel;
-	}
-	
-	//Note: A synchronous channel's non-mutating listeners are only guaranteed sequential execution with respect to
-	//the other listeners of that channel
-	public static EventChannel sync() {
-		return newChannel(false);
-	}
-	
-	//Note: An asynchronous channel will still invoke mutator listeners
-	//sequentially
-	public static EventChannel async() {
-		return newChannel(true);
 	}
 	
 	public static void kill(EventChannel channel) {
@@ -204,6 +240,15 @@ public final class EventChannel {
 		}
 	}
 	
+	public static EventChannel newSync() {
+		return register((i) -> new Default(i, false));
+	}
+	
+	public static EventChannel newAsync() {
+		return register((i) -> new Default(i, true));
+	}
+	
+	//TODO: Reevaluate the try/catch blocks here
 	private static <T> void dispatchAll(Event<T> event, T value) {
 		if (event == null)
 			throw new NullPointerException();
@@ -214,17 +259,17 @@ public final class EventChannel {
 		List<EventDispatchException> failed = new CopyOnWriteArrayList<>();
 		try {
 			THREAD_POOL.submit(() -> channels.parallelStream()
-					.forEach((c) -> failed.addAll(c.observersAccept(event, value)))
+					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.OBSERVER)))
 					).get();
 		} catch (InterruptedException | ExecutionException e) {
 			failed.add(new EventDispatchException(event, e));
 		}
 		for (EventChannel channel : channels) {
-			failed.addAll(channel.mutatorsAccept(event, value));
+			failed.addAll(channel.accept(event, value, ListenerType.MUTATOR));
 		}
 		try {
 			THREAD_POOL.submit(() -> channels.parallelStream()
-					.forEach((c) -> failed.addAll(c.monitorsAccept(event, value)))
+					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.MONITOR)))
 					).get();
 		} catch (InterruptedException | ExecutionException e) {
 			failed.add(new EventDispatchException(event, e));

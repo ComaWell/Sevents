@@ -6,7 +6,7 @@ public class EventDispatchException extends RuntimeException {
 	
 	private final Event<?> event;
 	
-	EventDispatchException(Event<?> event, Exception cause) {
+	public EventDispatchException(Event<?> event, Exception cause) {
 		super(cause);
 		this.event = event;
 	}
