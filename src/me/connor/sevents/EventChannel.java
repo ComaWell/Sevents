@@ -22,7 +22,6 @@ public abstract class EventChannel {
 		this.id = id;
 	}
 	
-	
 	public final int id() {
 		return id;
 	}
