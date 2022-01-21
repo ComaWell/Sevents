@@ -214,7 +214,7 @@ public abstract class EventChannel {
 	 * loaded/unloaded dynamically (such as with a plugin system), so it isn't realisitic for
 	 * more than a few (maybe a few dozen/hundred in extreme cases) channels to be created anyways.
 	 */
-	public static EventChannel register(IntFunction<EventChannel> generator) {
+	public static EventChannel create(IntFunction<EventChannel> generator) {
 		int id = ID_GENERATOR.getAndIncrement();
 		if (id < 0)
 			throw new ArithmeticException("The maximum number of EventChannels have been created");
@@ -241,11 +241,11 @@ public abstract class EventChannel {
 	}
 	
 	public static EventChannel newSync() {
-		return register((i) -> new Default(i, false));
+		return create((i) -> new Default(i, false));
 	}
 	
 	public static EventChannel newAsync() {
-		return register((i) -> new Default(i, true));
+		return create((i) -> new Default(i, true));
 	}
 	
 	//TODO: Reevaluate the try/catch blocks here
