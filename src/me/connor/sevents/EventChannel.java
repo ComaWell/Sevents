@@ -30,8 +30,8 @@ public abstract class EventChannel {
 		return isActive(this);
 	}
 	
-	protected final void checkActive() {
-		checkActive(this);
+	protected final void assertActive() {
+		assertActive(this);
 	}
 	
 	public abstract <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer);
@@ -105,7 +105,7 @@ public abstract class EventChannel {
 		public <T> void observe(Event<T> event, BiConsumer<Event<?>, ? super T> observer) {
 			if (event == null || observer == null)
 				throw new NullPointerException();
-			checkActive();
+			assertActive();
 			synchronized(observers) {
 				observers.add(event, observer);
 			}
@@ -115,7 +115,7 @@ public abstract class EventChannel {
 		public <T> void mutate(Event<T> event, BiConsumer<Event<?>, ? super T> mutator) {
 			if (event == null || mutator == null)
 				throw new NullPointerException();
-			checkActive();
+			assertActive();
 			synchronized(mutators) {
 				mutators.add(event, mutator);
 			}
@@ -125,7 +125,7 @@ public abstract class EventChannel {
 		public <T> void monitor(Event<T> event, BiConsumer<Event<?>, ? super T> monitor) {
 			if (event == null || monitor == null)
 				throw new NullPointerException();
-			checkActive();
+			assertActive();
 			synchronized(monitors) {
 				monitors.add(event, monitor);
 			}
@@ -166,6 +166,7 @@ public abstract class EventChannel {
 
 		@Override
 		<T> List<EventDispatchException> accept(Event<T> event, T value, ListenerType type) {
+			assertActive();
 			EventMap map;
 			boolean async;
 			switch (type) {
@@ -202,7 +203,7 @@ public abstract class EventChannel {
 		return CHANNELS.contains(channel);
 	}
 	
-	private static void checkActive(EventChannel channel) {
+	private static void assertActive(EventChannel channel) {
 		if (!isActive(channel)) throw new IllegalStateException("This EventChannel is no longer active");
 	}
 	
@@ -258,8 +259,8 @@ public abstract class EventChannel {
 		List<EventDispatchException> failed = new CopyOnWriteArrayList<>();
 		try {
 			THREAD_POOL.submit(() -> channels.parallelStream()
-					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.OBSERVER)))
-					).get();
+					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.OBSERVER))))
+					.get();
 		} catch (InterruptedException | ExecutionException e) {
 			failed.add(new EventDispatchException(event, e));
 		}
@@ -268,8 +269,8 @@ public abstract class EventChannel {
 		}
 		try {
 			THREAD_POOL.submit(() -> channels.parallelStream()
-					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.MONITOR)))
-					).get();
+					.forEach((c) -> failed.addAll(c.accept(event, value, ListenerType.MONITOR))))
+					.get();
 		} catch (InterruptedException | ExecutionException e) {
 			failed.add(new EventDispatchException(event, e));
 		}
