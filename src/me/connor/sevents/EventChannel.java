@@ -215,12 +215,14 @@ public abstract class EventChannel {
 	 * more than a few (maybe a few dozen/hundred in extreme cases) channels to be created anyways.
 	 */
 	public static EventChannel create(IntFunction<EventChannel> generator) {
+		if (generator == null)
+			throw new NullPointerException();
 		int id = ID_GENERATOR.getAndIncrement();
 		if (id < 0)
 			throw new ArithmeticException("The maximum number of EventChannels have been created");
 		EventChannel channel = generator.apply(id);
 		if (channel.id() != id)
-			throw new IllegalArgumentException("The id of this EventChannel does not match the id it was assigned"
+			throw new IllegalArgumentException("The id of the created EventChannel does not match the id it was assigned"
 					+ "(expected " + id + ", received " + channel.id() + ")");
 		synchronized (CHANNELS) {
 			if (!CHANNELS.add(channel))
