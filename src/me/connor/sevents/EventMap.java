@@ -23,7 +23,8 @@ public final class EventMap {
 	public <T> BiConsumer<Event<?>, T>[] get(Event<T> event) {
 		if (!isBaked())
 			bake();
-		return baked.get(event).clone();//The cost of cloning the arrays is way lower than the iteration cost of using an immutable list instead
+		BiConsumer<Event<?>, T>[] listeners = baked.get(event);
+		return listeners == null ? new BiConsumer[0] : listeners.clone();//The cost of cloning the arrays is way lower than the iteration cost of using an immutable list instead
 	}
 	
 	@SuppressWarnings("rawtypes")
