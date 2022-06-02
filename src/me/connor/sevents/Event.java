@@ -4,16 +4,16 @@ import java.util.function.*;
 
 /**
  * <p>An Event is an Object used primarily as a namespace for code to dispatch and listen to. An Event can either be
- * {@link Valued}, meaning that there is data associated with the Event when it is dispatched, or {@link Blank},
+ * {@link Valued}, meaning that there is an object associated with the Event when it is dispatched, or {@link Blank},
  * meaning the act of dispatching it is in and of itself the data.
  * </p>
  * 
- * <p>While the Event class is abstract, extending the Event class is NOT supported by the rest of the library.</p>
+ * <p>While the Event class is abstract, extending the Event class is NOT supported by the library.</p>
  * 
  * <p>Events do not by themselves hold, create, or dispatch data, nor are Events instatiated as part of the process of dispatching.
  * Rather, they should generally be instantiated, referenced, and treated as a static constant. Note that because Events need to be referenced
- * in order to be listened to or dispatched, they should be declared publicly. (In situations where having control over who/what can dispatch an Event
- * is desired, please see {@link Event.Proxy}.) Events follow a tree-like hierarchy of lineage, similar 
+ * in order to be listened to or dispatched, they should be declared publicly. In situations where having control over who/what can dispatch an Event
+ * is desired, see {@link Event.Proxy}. Events follow a tree-like hierarchy of lineage, similar 
  * to interface or class inheritance. By instantiating a new Event, it effectively creates a new branch for dispatching and
  * listening to occur. Child Events can then be instantiated from that Event, adding to its lineage. When an Event is dispatched, it will trigger all
  * listeners that are registered to it as well as all of the ancestors of said Event (passing along the Object that was used for dispatch if applicable).
@@ -56,8 +56,7 @@ public abstract class Event<T> {
 	/**
 	 * <p>The Event responsible for catching {@link EventDispatchException EventDispatchExceptions}, which occur
 	 * when an unmanaged {@link Exception} is thrown by a listener. Generally, this Event should only be listened
-	 * to for logging and debugging purposes; it is considered an error for listeners to throw Exceptions as a matter
-	 * of design.
+	 * to for debugging purposes; it is considered an error for listeners to throw Exceptions intentionally.
 	 * </p>
 	 * 
 	 * <p>Note that this is a {@link Proxy} Event instance, meaning that it can be listened to but not dispatched directly.</p>
@@ -69,6 +68,7 @@ public abstract class Event<T> {
 	private Event(String name) {
 		if (name == null)
 			throw new NullPointerException();
+		//TODO: Naming scheme regex
 		if (name.isBlank() || name.lines().count() != 1)
 			throw new IllegalArgumentException("An Event name must be a non-blank, single-line String");
 		this.name = name;
@@ -84,7 +84,7 @@ public abstract class Event<T> {
 	}
 	
 	/**
-	 * @return the value of this Event instance's {@link Event#name()} method.
+	 * @return the equivalent of invoking this instance's {@link Event#name()} method.
 	 */
 	@Override
 	public String toString() {
@@ -115,7 +115,7 @@ public abstract class Event<T> {
 	 * @return the direct parent of this Event, i.e. the immediate Event that will also be dispatched
 	 * when this Event is dispatched. The only exception with this Method is the {@link Event#ROOT root}
 	 * Event, which has no parent and will instead return itself. Note that Events are not aware of, nor 
-	 * do they hold references to their children, so there is no corresponding Event::children method.
+	 * do they hold references to, their children, so there is no corresponding Event#children method.
 	 * 
 	 * @see Event#ROOT
 	 */
@@ -172,7 +172,9 @@ public abstract class Event<T> {
 	}
 	
 	/**
-	 * <p>Blank Events do not have additional data associated with them during dispatch.</p>
+	 * <p>Blank Events do not have additional data associated with them during dispatch. In other words,
+	 * the information conveyed by the Event being dispatch is solely that the Event occurred.
+	 * </p>
 	 * 
 	 * @author Connor Wellington
 	 * 
